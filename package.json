@@ -1,0 +1,15 @@
+{
+  "name": "obsidian-deduplicator",
+  "version": "0.1.0",
+  "description": "Scan your vault for duplicate notes and handle them safely.",
+  "scripts": {
+    "dev": "esbuild src/main.ts --bundle --outfile=main.js --watch",
+    "build": "esbuild src/main.ts --bundle --minify --outfile=main.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.2",
+    "typescript": "^5.2.2",
+    "@types/node": "^18.17.3",
+    "obsidian": "github:obsidianmd/obsidian-api"
+  }
+}

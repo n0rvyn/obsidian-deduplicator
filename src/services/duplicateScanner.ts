@@ -82,7 +82,7 @@ export class DuplicateScanner {
       return cached;
     }
 
-    try {
+        try {
       const data = await this.app.vault.adapter.readBinary(file.path);
       const hash = await sha256(data);
       const meta: FileMeta = {

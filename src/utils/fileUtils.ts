@@ -21,6 +21,8 @@ export function shouldIgnoreFile(file: TFile, ignorePaths: string[], sizeCapMB: 
   return false;
 }
 
+
+
 /**
  * Validates file path patterns
  * @param patterns Array of path patterns to validate

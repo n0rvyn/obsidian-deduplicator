@@ -7,6 +7,11 @@ import { DuplicateGroup, VIEW_TYPE_DUPLICATE, DeduplicatorSettings } from "../ty
 export class DuplicateView extends ItemView {
   private groups: DuplicateGroup[] = [];
   private plugin: Plugin & { settings: DeduplicatorSettings };
+  // Manual selection state
+  private manualSelectionGroups: Set<string> = new Set();
+  private selectedFiles: Map<string, Set<string>> = new Map();
+  // Track expanded groups
+  private expandedGroups: Set<string> = new Set();
 
   constructor(leaf: WorkspaceLeaf, plugin: Plugin & { settings: DeduplicatorSettings }) {
     super(leaf);
@@ -99,6 +104,19 @@ export class DuplicateView extends ItemView {
     const header = groupElement.createEl("div", { cls: "duplicate-group-header" });
     const details = header.createEl("details");
 
+    // Set initial open state - expand if in manual selection mode or previously expanded
+    const shouldBeExpanded = this.manualSelectionGroups.has(group.hash) || this.expandedGroups.has(group.hash);
+    details.open = shouldBeExpanded;
+
+    // Track state changes
+    details.addEventListener("toggle", () => {
+      if (details.open) {
+        this.expandedGroups.add(group.hash);
+      } else {
+        this.expandedGroups.delete(group.hash);
+      }
+    });
+
     const summary = details.createEl("summary");
     summary.createEl("span", {
       text: `${group.files.length}× ${group.files[0].basename}`,
@@ -115,7 +133,7 @@ export class DuplicateView extends ItemView {
     const fileList = content.createEl("ul", { cls: "duplicate-file-list" });
 
     for (const file of group.files) {
-      this.renderFile(fileList, file);
+      this.renderFile(fileList, file, group.hash);
     }
 
     // Actions
@@ -127,9 +145,30 @@ export class DuplicateView extends ItemView {
    * Render a single file in the list
    * @param container The container element
    * @param file The file to render
+   * @param groupHash The hash of the group this file belongs to
    */
-  private renderFile(container: HTMLElement, file: TFile): void {
+  private renderFile(container: HTMLElement, file: TFile, groupHash: string): void {
     const listItem = container.createEl("li", { cls: "duplicate-file-item" });
+
+    // Add checkbox if in manual selection mode
+    if (this.manualSelectionGroups.has(groupHash)) {
+      const checkboxContainer = listItem.createEl("div", { cls: "duplicate-file-checkbox" });
+      checkboxContainer.style.display = "inline-block";
+      checkboxContainer.style.marginRight = "8px";
+
+      const checkbox = checkboxContainer.createEl("input", { type: "checkbox" });
+      checkbox.style.marginRight = "8px";
+
+      // Check if this file is selected
+      const selectedFilesForGroup = this.selectedFiles.get(groupHash);
+      if (selectedFilesForGroup && selectedFilesForGroup.has(file.path)) {
+        checkbox.checked = true;
+      }
+
+      checkbox.onchange = () => {
+        this.toggleFileSelection(groupHash, file.path, checkbox.checked);
+      };
+    }
 
     // File link
     const link = listItem.createEl("a", {
@@ -194,11 +233,25 @@ export class DuplicateView extends ItemView {
       }
     };
 
-    // Manual selection button
+        // Manual selection button
+    const isInSelectionMode = this.manualSelectionGroups.has(group.hash);
     const manualBtn = buttonContainer.createEl("button", {
-      text: "Select Manually"
+      text: isInSelectionMode ? "Remove" : "Select Manually"
     });
+
+    if (isInSelectionMode) {
+      manualBtn.classList.add("mod-warning");
+    }
+
     manualBtn.onclick = () => this.selectManually(group);
+
+    // Add cancel button when in selection mode
+    if (isInSelectionMode) {
+      const cancelBtn = buttonContainer.createEl("button", {
+        text: "Cancel"
+      });
+      cancelBtn.onclick = () => this.cancelManualSelection(group);
+    }
   }
 
   /**
@@ -339,9 +392,141 @@ export class DuplicateView extends ItemView {
    * Manual selection for a group
    * @param group The duplicate group
    */
-  private selectManually(group: DuplicateGroup): void {
-    // TODO: Implement manual selection UI
-    console.log("Manual selection for group:", group.hash);
+  private async selectManually(group: DuplicateGroup): Promise<void> {
+    const isInSelectionMode = this.manualSelectionGroups.has(group.hash);
+
+    if (isInSelectionMode) {
+      // Remove mode - process selected files
+      await this.removeSelectedFiles(group);
+    } else {
+      // Select mode - enter manual selection
+      this.enterManualSelection(group);
+    }
+  }
+
+  /**
+   * Enter manual selection mode for a group
+   * @param group The duplicate group
+   */
+  private enterManualSelection(group: DuplicateGroup): void {
+    this.manualSelectionGroups.add(group.hash);
+    this.selectedFiles.set(group.hash, new Set());
+    // Ensure the group is expanded when entering manual selection mode
+    this.expandedGroups.add(group.hash);
+    this.render();
+  }
+
+  /**
+   * Cancel manual selection mode for a group
+   * @param group The duplicate group
+   */
+  private cancelManualSelection(group: DuplicateGroup): void {
+    this.manualSelectionGroups.delete(group.hash);
+    this.selectedFiles.delete(group.hash);
+    // Keep the group expanded state as user manually expanded it
+    this.render();
+  }
+
+  /**
+   * Toggle file selection state
+   * @param groupHash The group hash
+   * @param filePath The file path
+   * @param selected Whether the file is selected
+   */
+  private toggleFileSelection(groupHash: string, filePath: string, selected: boolean): void {
+    const selectedFilesForGroup = this.selectedFiles.get(groupHash) || new Set();
+
+    if (selected) {
+      selectedFilesForGroup.add(filePath);
+    } else {
+      selectedFilesForGroup.delete(filePath);
+    }
+
+    this.selectedFiles.set(groupHash, selectedFilesForGroup);
+  }
+
+  /**
+   * Remove selected files from a group
+   * @param group The duplicate group
+   */
+  private async removeSelectedFiles(group: DuplicateGroup): Promise<void> {
+    const selectedFilesForGroup = this.selectedFiles.get(group.hash);
+
+    if (!selectedFilesForGroup || selectedFilesForGroup.size === 0) {
+      new Notice("No files selected for removal.");
+      return;
+    }
+
+    // Find the actual TFile objects for the selected paths
+    const filesToRemove = group.files.filter(file => selectedFilesForGroup.has(file.path));
+
+    if (filesToRemove.length === group.files.length) {
+      new Notice("Cannot remove all files from a group. Please keep at least one file.");
+      return;
+    }
+
+    // Show confirmation dialog if enabled
+    if (this.plugin.settings.confirmBeforeDelete) {
+      const confirmed = await this.showConfirmationDialog(
+        "Remove selected files",
+        `This will ${this.plugin.settings.action === "trash" ? "move to trash" : "tag"} the following files:`,
+        filesToRemove
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    // Process files based on action setting
+    let processedCount = 0;
+    const errors: string[] = [];
+
+    for (const file of filesToRemove) {
+      try {
+        if (this.plugin.settings.action === "trash") {
+          await this.app.vault.trash(file, false);
+        } else if (this.plugin.settings.action === "tag") {
+          await this.addDuplicateTag(file);
+        }
+        processedCount++;
+      } catch (error) {
+        console.error(`Error processing file ${file.path}:`, error);
+        errors.push(`${file.path}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    // Show result notification
+    const action = this.plugin.settings.action === "trash" ? "moved to trash" : "tagged";
+    if (processedCount > 0) {
+      new Notice(`Successfully ${action} ${processedCount} selected file(s)`);
+    }
+
+    if (errors.length > 0) {
+      new Notice(`Failed to process ${errors.length} file(s). Check console for details.`, 5000);
+    }
+
+    // Update the group to remove processed files
+    const remainingFiles = group.files.filter(file => !selectedFilesForGroup.has(file.path));
+
+    if (remainingFiles.length <= 1) {
+      // If only one file remains, remove the entire group
+      this.removeGroup(group);
+    } else {
+      // Update the group with remaining files
+      const groupIndex = this.groups.findIndex(g => g.hash === group.hash);
+      if (groupIndex !== -1) {
+        this.groups[groupIndex] = { ...group, files: remainingFiles };
+      }
+    }
+
+        // Exit manual selection mode
+    this.manualSelectionGroups.delete(group.hash);
+    this.selectedFiles.delete(group.hash);
+    // Keep the group expanded if it still exists after removal
+
+    // Re-render the view
+    this.render();
   }
 
   /**
@@ -371,7 +556,7 @@ export class DuplicateView extends ItemView {
     });
   }
 
-  /**
+    /**
    * Add duplicate tag to a file
    * @param file The file to tag
    */
@@ -400,6 +585,10 @@ export class DuplicateView extends ItemView {
    */
   private removeGroup(groupToRemove: DuplicateGroup): void {
     this.groups = this.groups.filter(group => group.hash !== groupToRemove.hash);
+    // Clean up state for removed group
+    this.expandedGroups.delete(groupToRemove.hash);
+    this.manualSelectionGroups.delete(groupToRemove.hash);
+    this.selectedFiles.delete(groupToRemove.hash);
     this.render();
   }
 }

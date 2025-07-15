@@ -1,10 +1,24 @@
 {
   "name": "obsidian-deduplicator",
-  "version": "0.1.0",
+  "version": "0.1.12",
   "description": "Scan your vault for duplicate notes and handle them safely.",
   "scripts": {
-    "dev": "esbuild src/main.ts --bundle --outfile=main.js --watch",
-    "build": "esbuild src/main.ts --bundle --minify --outfile=main.js"
+    "dev": "npm run build:dev && npm run build:copy",
+    "dev:watch": "npm run build:manifest && esbuild src/main.ts --bundle --outfile=dist/main.js --external:obsidian --format=cjs --watch",
+    "build": "npm run version:patch && npm run build:prod && npm run build:copy",
+    "build:dev": "npm run build:manifest && esbuild src/main.ts --bundle --outfile=dist/main.js --external:obsidian --format=cjs",
+    "build:prod": "NODE_ENV=production npm run build:manifest:prod && NODE_ENV=production esbuild src/main.ts --bundle --minify --outfile=dist/main.js --external:obsidian --format=cjs",
+    "build:manifest": "node scripts/build-manifest.js",
+    "build:manifest:prod": "node scripts/build-manifest-prod.js",
+    "build:copy": "cp dist/main.js main.js && cp dist/manifest.json manifest.json",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version",
+    "clean": "rm -rf dist main.js manifest.json",
+    "check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts --fix",
+    "deploy": "npm run build && npm run deploy:copy",
+    "deploy:copy": "cp dist/main.js dist/manifest.json \"/mnt/c/Code/dev/99-Obsidian/.obsidian/plugins/obsidian-deduplicator/\""
   },
   "devDependencies": {
     "esbuild": "^0.19.2",

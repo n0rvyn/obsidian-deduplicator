@@ -1,13 +1,14 @@
 {
   "id": "obsidian-deduplicator",
   "name": "Deduplicator",
-  "version": "0.1.12",
+  "author": "Your Name",
+  "version": "0.1.0",
   "minAppVersion": "1.0.0",
   "description": "Scan your vault for duplicate notes and handle them safely.",
-  "author": "Your Name",
+  "main": "main.js",
+  "authorUrl": "",
   "fundingUrl": {
     "Buy Me a Coffee": ""
   },
-  "isDesktopOnly": false,
-  "main": "main.js"
+  "isDesktopOnly": false
 }

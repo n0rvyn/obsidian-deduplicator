@@ -20,6 +20,10 @@ export interface FileMeta {
   mtime: number;
   size: number;
   hash: string;
+  matchType?: "exact" | "canonical" | "near";
+  normalizedHash?: string; // For canonical matching
+  contentHash?: string; // Original content hash for reference
+  similarityVector?: number[]; // For LLM-based similarity
 }
 
 export type HashMap = Record<string, FileMeta & { path: string }>;
@@ -28,12 +32,22 @@ export type HashMap = Record<string, FileMeta & { path: string }>;
 export interface DuplicateGroup {
   hash: string;
   files: TFile[];
+  matchType?: "exact" | "canonical" | "near";
+  similarityScore?: number; // For near matches
 }
 
 // LLM interfaces
 export interface LLMRequest {
   systemPrompt: string;
   userPrompt: string;
+}
+
+// Similarity result interface for near matching
+export interface SimilarityResult {
+  file1: TFile;
+  file2: TFile;
+  score: number;
+  method: "jaccard" | "cosine" | "simple" | "llm";
 }
 
 // Constants

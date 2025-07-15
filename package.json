@@ -1,6 +1,6 @@
 {
   "name": "obsidian-deduplicator",
-  "version": "0.1.18",
+  "version": "0.1.21",
   "description": "Scan your vault for duplicate notes and handle them safely.",
   "scripts": {
     "dev": "npm run build:dev && npm run build:copy",
